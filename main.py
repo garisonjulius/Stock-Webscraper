@@ -12,14 +12,8 @@ from selenium.webdriver.support.select import Select
 from selenium.webdriver.common.keys import Keys
 from bs4 import BeautifulSoup
 from decimal import Decimal
-import re
-import pandas as pd
 
-# Set up Google Sheet
-sa = gspread.service_account(filename='/Users/garisonjulius/Downloads/stock/revisedstock-431b2c269022.json')
-sh = sa.open_by_url('https://docs.google.com/spreadsheets/d/1v5FbfCuueVbqhKU74Nyd9DKXheI5uXTJ9oIYwX6_-mQ/edit#gid=0')
-worksheet = sh.sheet1
-worksheet2 = sh.worksheet('Missed')
+# Set up Google Sheets
 
 # Optimizing the performance
 options = Options()
@@ -51,6 +45,7 @@ def scrape_data_with_selenium(driver, url, inpStr, missed):
     try:
         # Zacks page
         driver.get('https://www.zacks.com/stock/quote/' + url + '/detailed-earning-estimates')
+        time.sleep(1)
 
         # Find the elements and extract data
         quote = driver.find_elements(By.ID, 'quote_ribbon_v2')
@@ -76,10 +71,6 @@ def scrape_data_with_selenium(driver, url, inpStr, missed):
         finData = dataQuote + dataTwoCol
         finData = [item for sublist in finData for item in sublist]
         delimeter = ' '
-
-        # prefixes_to_find = ["Current Qtr " , "Next Qtr ", "Current Year ", "Next Year ", "PE ", "PEG Ratio"]
-        # 39
-
     
         # Clean Up
         finData[2] = finData[2][:-4]
@@ -107,13 +98,6 @@ def scrape_data_with_selenium(driver, url, inpStr, missed):
 
         if not (finData[38].startswith('*BMO')):
             finData.insert(38, None)
-
-
-        #print(finData)
-        #print(finData[40])
-        #print('**************************')
-
-        #Growth Estimates
         
         store = finData[40]
         if(len(finData[40].split()) > 6):
@@ -148,8 +132,6 @@ def scrape_data_with_selenium(driver, url, inpStr, missed):
         finData[-1] = finData[-1][1:-1]
         tik = finData[-1]
 
-        print('FINISHED ZACKS')
-
         finData += ["FILLER"] * 9
         finData[11] = finData[11].strip()
 
@@ -159,116 +141,7 @@ def scrape_data_with_selenium(driver, url, inpStr, missed):
         else:
             finData.append("N/A")
 
-        print('FINISHED YAHOO')
-
-        #Wallmine
-        innerFinData = []
-    
-        driver.get('https://wallmine.com')
-        
-        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '//*[@id="search-form"]/div/span/input[2]')))
-        searchBar = driver.find_element(By.XPATH, '//*[@id="search-form"]/div/span/input[2]')
-        searchBar.send_keys(tik)
-        searchBar.submit()
-
-        print('CHECK')
-
-        #Making sure we get the right company data from wallmine
-
-        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '/html/body/main/section/div[4]')))
-        print(1)
-        check = driver.find_elements(By.XPATH, '/html/body/main/section')
-        print(2)
-        checkStats = [info.text for info in check]
-        print(3)
-        checkStats = [val.split('\n') for val in checkStats][0]
-        
-        #print(checkStats)
-
-        checkTik = checkStats[0].split()[0]
-
-        print(checkTik)
-        print(tik)
-
-        if (str(checkTik).lower() != str(tik).lower()):
-            print('MISMATCH')
-            return finData
-
-        print('CHECK WEEEE')
-
-        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '/html/body/main/section/div[4]')))
-        value = driver.find_elements(By.XPATH, '/html/body/main/section/div[4]/div[1]/div[2]')
-        valueStats = [info.text for info in value]
-        valueStats = [val.split('\n') for val in valueStats][0]
-
-        #print(valueStats)
-
-        if (len(valueStats) < 2):
-            valueStats = getSecondTryData(driver, url, inpStr, missed)
-            #valueStats = []
-        else:
-            valueStats = valueStats[16:18] + valueStats[24:26] + valueStats[30:32] + valueStats[52:58] + valueStats[64:68] + valueStats[70:72] + valueStats[74:76] + valueStats[88:92] + valueStats[118:120] + valueStats[82:84] + valueStats[12:14] + valueStats[-3:-1] + valueStats[10:12]
-
-        #Revenue Q/Q = 10-11
-        #Revenue Y/Y = 12-13
-        #Forward/value = 16-17
-        #PEG = 24-25
-        #P/B = 30-31
-        #FCF yeild = 36-37
-        #EPS Q/Q = 48-49
-        #3 Margins = 52-57
-        #ROE + ROI = 64-67
-        #D/E = 70-71
-        #C Ratio = 74-75
-        #RSI = 82-83
-        #SMA = 88-91
-        #Earning Date = 117-118
-        #Country = -3 - -2
-
-        #32 length
-        #print(len(valueStats))
-        
-        #If the second try of getting wallmine data fails, then just return zacks
-        if (len(valueStats) < 2):
-            return finData
-
-        valueTwo = driver.find_elements(By.XPATH, '/html/body/main/section/div[4]/div[2]/div[1]')
-        valueTwoStats = [info.text for info in valueTwo]
-        valueTwoStats = [val.split('\n') for val in valueTwoStats][0]
-
-        
-        valueTwoStats = valueTwoStats[6:12]
-        
-        #print(valueTwoStats)
-     
-        #icon-sign wmi wmi-caret-down
-    
-        print('****************')
-        
-        finData = finData + valueTwoStats + valueStats
-
-        threeMonthNegative = driver.find_element(By.XPATH, '/html/body/main/section/div[4]/div[2]/div[1]/div[4]/a/div/div/i')
-        threeClassName = threeMonthNegative.get_attribute('class')
-
-        if(threeClassName == 'icon-sign wmi wmi-caret-down'):
-            #print(finData[68]) #28.92%
-            finData[68] = Decimal(finData[68][:-1])
-            finData[68] = finData[68] * -1
-            finData[68] = str(finData[68]) + '%'
-
-        oneYearNegative = driver.find_element(By.XPATH, '/html/body/main/section/div[4]/div[2]/div[1]/div[6]/a/div/div/i')
-        oneClassName = oneYearNegative.get_attribute('class')
-        
-        if(oneClassName == 'icon-sign wmi wmi-caret-down'):
-            #print(finData[70]) #4.14%
-            finData[72] = Decimal(finData[70][:-1])
-            finData[72] = finData[70] * -1
-            finData[72] = str(finData[70]) + '%'
-
-        print("FINISHED WALLMINE")
-
         #Final edits
-
         if(len(store.split()) > 6):
             store = store.split()[4]
         else:
@@ -276,12 +149,133 @@ def scrape_data_with_selenium(driver, url, inpStr, missed):
 
         finData.append(store)
 
-        #Making sure wrong company data is not gathered
-        finData.append(checkTik)
+        print('FINISHED ZACKS')
 
-        print(finData)
-        print('\n')
-        print(len(finData))
+
+        #FINVIZ
+
+        driver.get('https://finviz.com/quote.ashx?t=' + url + '&p=d')
+        time.sleep(1)
+
+        #13 rows of data 
+        nested = []
+
+        # Loop through each row of the table and extract text
+        row = driver.find_elements(By.CLASS_NAME, 'table-dark-row')
+        for val in row:
+            nested.append(val.text)
+
+        '''#First Row
+        first = nested[0]
+        peIndex = first.index('P/E')
+        finData.append(first[peIndex + 1])'''
+
+        #Second Row 
+        second = nested[1]
+        second = second.split(' ')
+        #print(second)
+        forwardIndex = second.index('P/E')
+        finData.append(second[forwardIndex + 1])
+
+        #Third Row
+        third = nested[2]
+        third = third.split(' ')
+        #print(third)
+        pegIndex = third.index('PEG')
+        finData.append(third[pegIndex + 1])
+
+        quarterlyIndex = third.index('Quarter')
+        finData.append(third[quarterlyIndex + 1])
+
+        #Fourth Row
+        fourth = nested[3]
+        fourth = fourth.split(' ')
+        #print(fourth)
+        halfIndex = fourth.index('Half')
+        finData.append(fourth[halfIndex + 2])
+
+        #Fifth Row
+        fifth = nested[4]
+        fifth = fifth.split(' ')
+        #print(fifth)
+        priceBookIndex = fifth.index('P/B')
+        finData.append(fifth[priceBookIndex + 1])
+
+        annualIndex = fifth.index('Year')
+        finData.append(fifth[annualIndex + 1])
+
+        #Sixth Row
+        sixth = nested[5]
+        sixth = sixth.split(' ')    
+        #print(sixth)
+        roeIndex = sixth.index('ROE')
+        finData.append(sixth[roeIndex + 1])
+
+        #Seventh Row
+        seventh = nested[6]
+        seventh = seventh.split(' ')
+        #print(seventh)
+        roiIndex = seventh.index('ROI')
+        finData.append(seventh[roiIndex + 1])
+
+        #eight Row
+        eight = nested[7]
+        eight = eight.split(' ')
+        #print(eight)
+        grossIndex = eight.index('Gross')
+        finData.append(eight[grossIndex + 2])
+
+        #Ninth Row
+        ninth = nested[8]
+        ninth = ninth.split(' ')
+        #print(ninth)
+        currentIndex = ninth.index('Current')
+        finData.append(ninth[currentIndex + 2])
+
+        operatingIndex = ninth.index('Oper.')
+        finData.append(ninth[operatingIndex + 2])
+
+        rsiIndex = ninth.index('RSI')
+        finData.append(ninth[rsiIndex + 2])
+
+        #Tenth Row
+        tenth = nested[9]
+        tenth = tenth.split(' ')
+        #print(tenth)
+        debtEquityIndex = tenth.index('Debt/Eq')
+        finData.append(tenth[debtEquityIndex + 1])
+
+        yearOverYearIndex = tenth.index('Y/Y')
+        finData.append(tenth[yearOverYearIndex + 2])
+
+        netIndex = tenth.index('Profit')
+        finData.append(tenth[netIndex + 2])
+
+        #Twelfth Row
+        twelfth = nested[11]
+        twelfth = twelfth.split(' ')
+        #print(twelfth)
+        quarterIndex = twelfth.index('Q/Q')
+        finData.append(twelfth[quarterIndex + 1])
+
+        earningsIndex = twelfth.index('Earnings')
+        uno = twelfth[earningsIndex + 1]
+        dos = twelfth[earningsIndex + 2]
+        tres = twelfth[earningsIndex + 3]
+        total = uno + '-' + dos + '-' + tres
+        finData.append(total)
+
+        #Thirteenth Row
+        thirteenth = nested[12]
+        thirteenth = thirteenth.split(' ')
+        #print(thirteenth)
+        fiftyIndex = thirteenth.index('SMA50')
+        finData.append(thirteenth[fiftyIndex + 1])
+
+        twoHundredIndex = thirteenth.index('SMA200')
+        finData.append(thirteenth[twoHundredIndex + 1])
+
+        print('FINISHED FINVIZ')
 
         return finData
 
@@ -290,76 +284,6 @@ def scrape_data_with_selenium(driver, url, inpStr, missed):
         print("Error occurred: lol", e)
         return finData
 
-def getSecondTryData(driver, url, inpStr, missed):
-    
-    #Second attempt at getting wallmine data if the first time fails
-
-    print('---------------')
-    print("REPEAT REPEAT REPEAT")
-    print('---------------')
-
-    try:
-
-        print('FINISHED YAHOO')
-
-        #Wallmine
-        innerFinData = []
-        driver.get('https://wallmine.com')
-        
-        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '//*[@id="search-form"]/div/span/input[2]')))
-        searchBar = driver.find_element(By.XPATH, '//*[@id="search-form"]/div/span/input[2]')
-        searchBar.send_keys(url)
-        searchBar.submit()
-
-        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '/html/body/main/section/div[4]')))
-        value = driver.find_elements(By.XPATH, '/html/body/main/section/div[4]/div[1]/div[2]')
-        valueStats = [info.text for info in value]
-        valueStats = [val.split('\n') for val in valueStats][0]
-
-        if (len(valueStats) < 2):
-            #innerFinData = getSecondTryData(driver, url, inpStr, missed)
-            return []
-            #valueStats = []
-        
-        else:
-            valueStats = valueStats[16:18] + valueStats[24:26] + valueStats[30:32] + valueStats[52:58] + valueStats[64:68] + valueStats[70:72] + valueStats[74:76] + valueStats[88:92] + valueStats[118:120] + valueStats[82:84] + valueStats[12:14] + valueStats[-3:-1] + valueStats[10:12]
-            return valueStats
-    
-        #Revenue Y/Y = 12-13
-        #Forward/value = 16-17
-        #PEG = 24-25
-        #P/B = 30-31
-        #FCF yeild = 36-37
-        #EPS Q/Q = 48-49
-        #3 Margins = 52-57
-        #ROE + ROI = 64-67
-        #D/E = 70-71
-        #C Ratio = 74-75
-        #RSI = 82-83
-        #SMA = 88-91
-        #Earning Date = 117-118
-        #Country = -3 - -2
-
-        valueTwo = driver.find_elements(By.XPATH, '/html/body/main/section/div[4]/div[2]/div[1]')
-        valueTwoStats = [info.text for info in valueTwo]
-        valueTwoStats = [val.split('\n') for val in valueTwoStats][0]
-        valueTwoStats = valueTwoStats[6:8] + valueTwoStats[10:12]
-        
-        #icon-sign wmi wmi-caret-down
-        
-        if(len(innerFinData) < 2):
-            finData = finData + valueTwoStats + valueStats
-        else:
-            finData = innerFinData
-
-        print("FINISHED WALLMINE REPEAT")
-        #missed.remove(url)
-        return finData
-
-    except Exception as e:
-        #missed.append(url)
-        print("Error occurred: lmao", e)
-        return None
 
 
 # Create a function for processing specific stocks
@@ -394,7 +318,8 @@ def process_specific_stocks(driver, missed):
                 if len(basic_info) < 60:
                     print('BAD DATA')
                     continue
-                elif(len(basic_info) < 102):
+                elif(len(basic_info) < 80):
+                    #There should be 86 items in the list
                     worksheet.insert_row(basic_info[:67], 3)
                 else:
                     worksheet.insert_row(basic_info, 3)
@@ -423,14 +348,13 @@ def process_calendar(driver, missed):
     link = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '//*[@id="date_select"]')))
     driver.execute_script("arguments[0].click();", link)
 
-    time.sleep(5)
-    
+    time.sleep(1.5)
 
     dateLink = WebDriverWait(driver, 10).until(
         EC.presence_of_element_located((By.XPATH, '//*[@id="dt_' + inpStr + '"]')))
     driver.execute_script("arguments[0].click();", dateLink)
 
-    time.sleep(5)
+    time.sleep(1.5)
  
 
     # View all the symbols using Select class
@@ -440,7 +364,7 @@ def process_calendar(driver, missed):
     all_select.select_by_value("-1")
 
     # Get the total number of entries
-    time.sleep(2)
+    time.sleep(1)
     
     entry_info = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '//*[@id="earnings_rel_data_all_table_info"]')))
     entries_text = entry_info.text.split()[-2]
@@ -456,148 +380,63 @@ def process_calendar(driver, missed):
     # Scrape all the symbols using find_elements_by_...
     links = driver.find_elements(By.TAG_NAME, 'a')
 
-    time.sleep(3)
+    time.sleep(1.5)
     
     filtered_links = [link.get_attribute('href') for link in links if
                       link.get_attribute('href') and 'stock/quote' in link.get_attribute('href')]
     filtered_links = filtered_links[:entries]
 
-    #print(filtered_links)
-
-    #time.sleep(2)
     print("Number of filtered links  " + str(len(filtered_links)))
-    # filtered_links = ['https://www.zacks.com/stock/quote/AAPL', 'https://www.zacks.com/stock/quote/PLTR', 'https://www.zacks.com/stock/quote/MSFT']
-    # Call the function for each link and accumulate data in rows_to_insert
-    for value in filtered_links:
+
+    #This makes the filtered links look like filtered codes. Like this [AAPL, PLTR, MSFT]
+    for i in range (len(filtered_links)): 
+        filtered_links[i] = filtered_links[i][34:]
+        #print(filtered_links[i])
+    
+    for i in range (len(filtered_links)):
         try:
-            basic_info = scrape_data_with_selenium(driver, value[34:], inpStr, missed)
+            code = filtered_links[i]
+            #print(code)
+            basic_info = scrape_data_with_selenium(driver, code, inpStr, missed)
 
             if basic_info:
                 #print(basic_info)
-                if(len(basic_info) < 102):
+                if(len(basic_info) < 80):
                     worksheet.insert_row(basic_info[:67], 3)
                 else:
                     worksheet.insert_row(basic_info, 3)
+                print('-------------FINISHED ' + code + '-------------')
             else:
                 print("Failed to scrape data from the given URL.")
         except TimeoutException:
-            print(f"Timeout occurred while processing link: {value}. Moving on to the next link.")
+            print(f"Timeout occurred while processing link: {code}. Moving on to the next link.")
             continue
         except Exception as e:
-            print(f"Error occurred while processing link CALENDAR: {value}\nError: {e}")
+            print(f"Error occurred while processing link CALENDAR: {code}\nError: {e}")
             continue
     
 
-# Main script
-#userInput = input('1 for Specific Stocks - C for Calendar:  ').strip()
-print('HERE')
-missed = []
+def login_etrader(driver):
+    # Open the website
+    driver.get("https://us.etrade.com/etx/pxy/login")
 
+    # Find the username, password, and login elements
+    username = driver.find_element(By.ID, "USER")
+    password = driver.find_element(By.ID, "password")
+    login = driver.find_element(By.ID, "mfaLogonButton")
+
+    # Enter your credentials and click the login button
+
+# Main script
+userInput = input('1 for Specific Stocks - C for Calendar:  ').strip()
+missed = []
 
 with webdriver.Chrome(service=service, options=options) as driver:
 
-    driver.get('https://finviz.com/quote.ashx?t=MSFT&p=d')
-    finVizPath = '/html/body/div[4]/div[3]/div[4]/table/tbody/tr/td/div/table[1]/tbody/tr/td/div[2]/table/tbody/tr'
+    if userInput.isdigit():
+        process_specific_stocks(driver, missed)
+    else:
+        process_calendar(driver, missed)
 
-    #13 rows
-    finVizFinal = []
-    nested = []
-
-    for i in range(1, 14):
-        nums = driver.find_element(By.XPATH, finVizPath + '[' + str(i) + ']')
-        text = str(nums.text).split(' ')
-        print(text)
-        nested.append(text)
-
-    '''#First Row
-    first = nested[0]
-    peIndex = first.index('P/E')
-    finVizFinal.append(first[peIndex + 1])'''
-
-    #Second Row 
-    second = nested[1]
-    forwardIndex = second.index('P/E')
-    finVizFinal.append(second[forwardIndex + 1])
-
-    #Third Row
-    third = nested[2]
-    pegIndex = third.index('PEG')
-    finVizFinal.append(third[pegIndex + 1])
-
-    quarterlyIndex = third.index('Quarter')
-    finVizFinal.append(third[quarterlyIndex + 1])
-
-    #Fourth Row
-    fourth = nested[3]
-    halfIndex = fourth.index('Half')
-    finVizFinal.append(fourth[halfIndex + 2])
-
-    #Fifth Row
-    fifth = nested[4]
-    priceBookIndex = fifth.index('P/B')
-    finVizFinal.append(fifth[priceBookIndex + 1])
-
-    annualIndex = fifth.index('Year')
-    finVizFinal.append(fifth[annualIndex + 1])
-
-    #Sixth Row
-    sixth = nested[5]
-    roeIndex = sixth.index('ROE')
-    finVizFinal.append(sixth[roeIndex + 1])
-
-    #Seventh Row
-    seventh = nested[6]
-    roiIndex = seventh.index('ROI')
-    finVizFinal.append(seventh[roiIndex + 2])
-
-    #Eigth Row
-    eigth = nested[7]
-    grossIndex = eigth.index('Gross')
-    finVizFinal.append(eigth[grossIndex + 2])
-
-    #Ninth Row
-    ninth = nested[8]
-    currentIndex = ninth.index('Current')
-    finVizFinal.append(ninth[currentIndex + 2])
-
-    operatingIndex = ninth.index('Oper.')
-    finVizFinal.append(ninth[operatingIndex + 2])
-
-    rsiIndex = ninth.index('RSI')
-    finVizFinal.append(ninth[rsiIndex + 2])
-
-    #Tenth Row
-    tenth = nested[9]
-    debtEquityIndex = tenth.index('Debt/Eq')
-    finVizFinal.append(tenth[debtEquityIndex + 1])
-
-    yearOverYearIndex = tenth.index('Y/Y')
-    finVizFinal.append(tenth[yearOverYearIndex + 2])
-
-    netIndex = tenth.index('Profit')
-    finVizFinal.append(tenth[netIndex + 2])
-
-    #Twelfth Row
-    twelfth = nested[11]
-    quarterIndex = twelfth.index('Q/Q')
-    finVizFinal.append(twelfth[quarterIndex + 1])
-
-    #Thirteenth Row
-    thirteenth = nested[12]
-    fiftyIndex = thirteenth.index('SMA50')
-    finVizFinal.append(thirteenth[fiftyIndex + 1])
-
-    twoHundredIndex = thirteenth.index('SMA200')
-    finVizFinal.append(thirteenth[twoHundredIndex + 1])
-
-    #Print Final Data
-    print(finVizFinal)
-    #worksheet2.insert_row(finVizFinal, 3)
-
-    
-
-
-    
-
-#worksheet2.insert_row(missed, 3)
+worksheet2.insert_row(missed, 3)
 print("Data inserted into Google Sheets.")
